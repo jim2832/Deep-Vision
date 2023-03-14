@@ -63,9 +63,9 @@ def Backward_Test(model):
     y = torch.tensor([0, 1, 1], dtype=torch.float64).to(model.dv)
     pred_y = model.forward(x)
     L = torch.pow(y - pred_y, 2) # using MSE loss
-    dL = torch.pow(pred_y, 2) - (2 * y * pred_y)
+    dL = 2 * pred_y - 2 * y
     val = model.backward(dL)
-    truth = -1.0628412871500468
+    truth = -1.249252247115394
     if (rel_err(torch.tensor(truth).to(model.dv), val) < 1e-6).cpu().numpy():
         return 'Correct'
     else:
