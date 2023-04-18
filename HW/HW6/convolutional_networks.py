@@ -52,7 +52,30 @@ class Conv(object):
     # Note that you are NOT allowed to use anything in torch.nn in other places. #
     ##############################################################################
     # Replace "pass" statement with your code
-    pass
+
+    # set the variables
+    N, C, H, W = x.size()
+    F, C, HH, WW = w.size()
+    stride = conv_param["stride"]
+    padding = conv_param["pad"]
+
+    # padding
+    input_tensor_padded = torch.nn.functional.pad(x, (padding, padding, padding, padding))
+
+    # Compute output tensor size
+    output_height = int((H + 2 * padding - HH) / stride + 1)
+    output_width = int((W + 2 * padding - WW) / stride + 1)
+
+    # Initialize output tensor and add bias
+    out = torch.zeros(N, F, output_height, output_width)
+    out += b.view(1, F, 1, 1)
+
+    # Convolution operation
+    for i in range(output_height):
+        for j in range(output_width):
+            for k in range(F):
+                for l in range(C):
+                    out[:, k, i, j] += torch.sum(input_tensor_padded[:, l, i:i+HH, j:j+WW] * w[k, l], dim=(1, 2, 3))
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
@@ -78,7 +101,18 @@ class Conv(object):
     # TODO: Implement the convolutional backward pass.                          #
     #############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    # 取得input和weight的shape
+    x, w, b, conv_param = cache
+    N, C, H, W = x.shape
+    F, _, HH, WW = w.shape
+    _, _, out_h, out_w = dout.shape
+
+    # 初始化梯度
+    dx = torch.zeros_like(x)
+    dw = torch.zeros_like(w)
+    db = torch.zeros_like(b)
+
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
