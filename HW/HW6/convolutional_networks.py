@@ -108,10 +108,34 @@ class Conv(object):
     F, _, HH, WW = w.shape
     _, _, out_h, out_w = dout.shape
 
+    # 設定 padding 和 stride
+    padding = conv_param["pad"]
+    stride = conv_param["stride"]
+
     # 初始化梯度
     dx = torch.zeros_like(x)
     dw = torch.zeros_like(w)
     db = torch.zeros_like(b)
+
+    # 把 x 加上 padding
+    x_padded = torch.nn.functional.pad(x, (padding, padding, padding, padding))
+    
+    # 計算 db
+    db = torch.sum(dout, dim=(0, 2, 3))
+
+    # 計算 dw
+    for i in range(out_h):
+        for j in range(out_w):
+            dw += torch.sum(x_padded[:, :, i*stride:i*stride+HH, j*stride:j*stride+WW].unsqueeze(1) * dout[:, :, i:i+1, j:j+1].unsqueeze(2), dim=0)
+            
+    # 計算 dx
+    for i in range(out_h):
+        for j in range(out_w):
+            dx[:, :, i*stride:i*stride+HH, j*stride:j*stride+WW] += torch.sum(w.unsqueeze(0) * dout[:, :, i:i+1, j:j+1].unsqueeze(2), dim=1)
+            
+    # 把 dx 的 padding 移除
+    if padding > 0:
+        dx = dx[:, :, padding:-padding, padding:-padding]
 
     #############################################################################
     #                              END OF YOUR CODE                             #
