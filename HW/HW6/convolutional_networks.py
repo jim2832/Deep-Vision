@@ -123,28 +123,28 @@ class Conv(object):
     dw = torch.zeros_like(w)
     db = torch.zeros_like(b)
 
-    # 把 x 加上 padding
+    # 把 dout 加上 padding
     x_pad = torch.nn.functional.pad(x, (padding, padding, padding, padding))
+
+    # Calculate db
+    db = dout.sum(dim=(0,2,3))
 
     # Perform the backward pass
     for n in range(N):
         for f in range(F):
             for i in range(output_height):
                 for j in range(output_weight):
-                    # Compute the index ranges for the input and weights
-                    vert_start = i * stride
-                    vert_end = vert_start + HH
-                    horiz_start = j * stride
-                    horiz_end = horiz_start + WW
+                    # Calculate the current slice of x_pad and dout
+                    slice_x = x_pad[n, :, i*stride:i*stride+HH, j*stride:j*stride+WW]
+                    slice_dout = dout[n, f, i, j]
+                    
+                    # Update dw and dx
+                    dw[f,:,:,:] += slice_x * slice_dout
+                    dx[n,:,i*stride:i*stride+HH,j*stride:j*stride+WW] += w[f,:,:,:] * slice_dout
 
-                    # Compute the gradients for the input, weights, and bias
-                    dx[n, :, vert_start:vert_end, horiz_start:horiz_end] += w[f, :, :, :] * dout[n, f, i, j]
-                    dw[f, :, :, :] += x_pad[n, :, vert_start:vert_end, horiz_start:horiz_end] * dout[n, f, i, j]
-                    db[f] += dout[n, f, i, j].item()
+    # Remove the padding from dx
+    dx = dx[:,:,padding:-padding,padding:-padding]
     
-    # Crop the padded regions of dx
-    dx = dx[:, :, padding:-padding, padding:-padding]
-
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
