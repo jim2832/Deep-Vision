@@ -54,28 +54,30 @@ class Conv(object):
     # Replace "pass" statement with your code
 
     # set the variables
-    N, C, H, W = x.size()
-    F, C, HH, WW = w.size()
+    N, C, H, W = x.shape
+    F, C, HH, WW = w.shape
     stride = conv_param["stride"]
     padding = conv_param["pad"]
-
-    # padding
-    input_tensor_padded = torch.nn.functional.pad(x, (padding, padding, padding, padding))
 
     # Compute output tensor size
     output_height = int((H + 2 * padding - HH) / stride + 1)
     output_width = int((W + 2 * padding - WW) / stride + 1)
+    
+    # padding
+    input_tensor_padded = torch.nn.functional.pad(x, (padding, padding, padding, padding))
 
     # Initialize output tensor and add bias
-    out = torch.zeros(N, F, output_height, output_width)
-    out += b.view(1, F, 1, 1)
+    out = torch.zeros((N, F, output_height, output_width), device = input_tensor_padded.device, dtype=torch.float64)
 
     # Convolution operation
-    for i in range(output_height):
-        for j in range(output_width):
-            for k in range(F):
-                for l in range(C):
-                    out[:, k, i, j] += torch.sum(input_tensor_padded[:, l, i:i+HH, j:j+WW] * w[k, l], dim=(1, 2, 3))
+    for i in range(N):
+        for c_out in range(F):
+            for h_out in range(output_height):
+                for w_out in range(output_width):
+                    h_in = h_out * stride
+                    w_in = w_out * stride
+                    out[i, c_out, h_out, w_out] = torch.sum(w[c_out] * input_tensor_padded[i, :, h_in:h_in+HH, w_in:w_in+WW]) + b[c_out]
+                    
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
@@ -104,13 +106,17 @@ class Conv(object):
     
     # 取得input和weight的shape
     x, w, b, conv_param = cache
+    _, _, output_height, output_weight = dout.shape
     N, C, H, W = x.shape
     F, _, HH, WW = w.shape
-    _, _, out_h, out_w = dout.shape
 
     # 設定 padding 和 stride
     padding = conv_param["pad"]
     stride = conv_param["stride"]
+
+    # 設定 output 的維度
+    # output_height = int((H + 2 * padding - HH) / stride + 1)
+    # output_weight = int((H + 2 * padding - WW) / stride + 1)
 
     # 初始化梯度
     dx = torch.zeros_like(x)
@@ -118,24 +124,26 @@ class Conv(object):
     db = torch.zeros_like(b)
 
     # 把 x 加上 padding
-    x_padded = torch.nn.functional.pad(x, (padding, padding, padding, padding))
-    
-    # 計算 db
-    db = torch.sum(dout, dim=(0, 2, 3))
+    x_pad = torch.nn.functional.pad(x, (padding, padding, padding, padding))
 
-    # 計算 dw
-    for i in range(out_h):
-        for j in range(out_w):
-            dw += torch.sum(x_padded[:, :, i*stride:i*stride+HH, j*stride:j*stride+WW].unsqueeze(1) * dout[:, :, i:i+1, j:j+1].unsqueeze(2), dim=0)
-            
-    # 計算 dx
-    for i in range(out_h):
-        for j in range(out_w):
-            dx[:, :, i*stride:i*stride+HH, j*stride:j*stride+WW] += torch.sum(w.unsqueeze(0) * dout[:, :, i:i+1, j:j+1].unsqueeze(2), dim=1)
-            
-    # 把 dx 的 padding 移除
-    if padding > 0:
-        dx = dx[:, :, padding:-padding, padding:-padding]
+    # Perform the backward pass
+    for n in range(N):
+        for f in range(F):
+            for i in range(output_height):
+                for j in range(output_weight):
+                    # Compute the index ranges for the input and weights
+                    vert_start = i * stride
+                    vert_end = vert_start + HH
+                    horiz_start = j * stride
+                    horiz_end = horiz_start + WW
+
+                    # Compute the gradients for the input, weights, and bias
+                    dx[n, :, vert_start:vert_end, horiz_start:horiz_end] += w[f, :, :, :] * dout[n, f, i, j]
+                    dw[f, :, :, :] += x_pad[n, :, vert_start:vert_end, horiz_start:horiz_end] * dout[n, f, i, j]
+                    db[f] += dout[n, f, i, j].item()
+    
+    # Crop the padded regions of dx
+    dx = dx[:, :, padding:-padding, padding:-padding]
 
     #############################################################################
     #                              END OF YOUR CODE                             #
