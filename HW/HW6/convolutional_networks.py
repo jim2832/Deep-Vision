@@ -15,7 +15,7 @@ def hello_convolutional_networks():
   """
   print('Hello from convolutional_networks.py!')
 
-
+# done
 class Conv(object):
 
   @staticmethod
@@ -104,53 +104,43 @@ class Conv(object):
     #############################################################################
     # Replace "pass" statement with your code
     
-    # 取得input和weight的shape
+    # 取得cache的內容
     x, w, b, conv_param = cache
-    _, _, output_height, output_width = dout.shape
-    N, C, H, W = x.shape
-    F, _, HH, WW = w.shape
-
+    
     # 設定 padding 和 stride
     padding = conv_param["pad"]
     stride = conv_param["stride"]
 
-    # 設定 output 的維度
-    # output_height = int((H + 2 * padding - HH) / stride + 1)
-    # output_width = int((H + 2 * padding - WW) / stride + 1)
+    # 設定 x_pad
+    x_pad = torch.nn.functional.pad(x, (padding, padding, padding, padding))
+    
+    #設定維度
+    N, C, H, W = x_pad.shape
+    F, _, HH, WW = w.shape
 
     # 初始化梯度
-    dx = torch.zeros_like(x)
+    dx_pad = torch.zeros_like(x_pad)
     dw = torch.zeros_like(w)
-    db = torch.zeros_like(b)
 
-    # 把 dout 加上 padding
-    x_pad = torch.nn.functional.pad(x, (padding, padding, padding, padding))
+    # 計算db
+    db = torch.sum(dout, axis=(0, 2, 3))
 
-    # Calculate db
-    db = dout.sum(dim=(0,2,3))
-
-    # Perform the backward pass
     for n in range(N):
         for f in range(F):
-            for i in range(output_height):
-                for j in range(output_width):
-                    # Calculate the current slice of x_pad and dout
-                    slice_x = x_pad[n, :, i*stride:i*stride+HH, j*stride:j*stride+WW]
-                    slice_dout = dout[n, f, i, j]
-                    
-                    # Update dw and dx
-                    dw[f,:,:,:] += slice_x * slice_dout
-                    dx[n,:,i*stride:i*stride+HH,j*stride:j*stride+WW] += w[f,:,:,:] * slice_dout
-
-    # Remove the padding from dx
-    dx = dx[:,:,padding:-padding,padding:-padding]
+          for i in range(0, H - HH + 1, stride):
+            for j in range(0, W - WW + 1, stride):
+             # dout[n, f, i, j]
+              dx_pad[n, :, i : i + HH, j : j + WW] += dout[n, f, i//stride, j//stride] * w[f]
+              dw[f] += dout[n, f, i//stride, j//stride] * x_pad[n, :, i : i + HH, j : j + WW]
+    
+    dx = dx_pad[:, :, padding:-padding, padding:-padding]
 
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
     return dx, dw, db
 
-
+# done
 class MaxPool(object):  
 
   @staticmethod
@@ -188,24 +178,16 @@ class MaxPool(object):
     out_height = int((H - pool_height) / stride) + 1
     out_width = int((W - pool_width) / stride) + 1
 
-    # Initialize the output tensor and mask
-    out = torch.zeros(N, C, out_height, out_width).to(x.device)
-    mask = torch.zeros_like(x).to(x.device)
+    # Initialize the output tensor
+    out = torch.zeros(N, C, out_height, out_width, dtype=torch.float64).to(x.device)
 
     # Apply max pooling
-    for h in range(out_height):
-        for w in range(out_width):
-            h_start = h*stride
-            w_start = w*stride
-            h_end = h_start + pool_height
-            w_end = w_start + pool_width
-
-            pool_region = x[:, :, h_start:h_end, w_start:w_end]
-            pool_result, indices = torch.max(pool_region, dim=(2, 3))
-            out[:, :, h, w] = pool_result
-            mask = torch.zeros_like(pool_region)
-            mask.scatter_(2, indices.unsqueeze(2), 1.0)
-            mask[:, :, h_start:h_end, w_start:w_end] += mask
+    for n in range(N):
+        for c in range(C):
+          for i in range(out_height):
+            for j in range(out_width):
+              pool_field = x[n, c, i*pool_height:i*pool_height+pool_height, j*pool_width:j*pool_width+pool_width]
+              out[n, c, i, j] = torch.max(pool_field)
 
     #############################################################################
     #                              END OF YOUR CODE                             #
@@ -235,28 +217,37 @@ class MaxPool(object):
     pool_height = pool_param["pool_height"]
     pool_width = pool_param["pool_width"]
     stride = pool_param["stride"]
+    _, _, out_height, out_width = dout.shape
 
     # initialization
     dx = torch.zeros_like(x)
 
-    # Compute gradient of max pooling
-    for h in range(output_tensor.size(2)):
-        for w in range(output_tensor.size(3)):
-            h_start = h*stride
-            w_start = w*stride
-            h_end = h_start + pool_height
-            w_end = w_start + pool_width
-            pool_region = x[:, :, h_start:h_end, w_start:w_end]
-            mask = mask[:, :, h_start:h_end, w_start:w_end]
-            pool_grad = dx[:, :, h, w].unsqueeze(2).unsqueeze(3) * mask
-            dx[:, :, h_start:h_end, w_start:w_end] += pool_grad
+    # Compute gradient for each element in the output
+    for n in range(N):
+        # loop over the channels
+        for c in range(C):
+            # loop over the height of output volume
+            for i in range(out_height):
+                h_start = i * stride
+                h_end = h_start + pool_height
+                # loop over the width of output volume
+                for j in range(out_width):
+                    w_start = j * stride
+                    w_end = w_start + pool_width
+
+                    # find the slice of the input volume
+                    x_slice = x[n, c, h_start:h_end, w_start:w_end]
+                    # find the maximum value in the slice
+                    mask = (x_slice == torch.max(x_slice))
+                    # assign the gradients to the maximum value in the slice
+                    dx[n, c, h_start:h_end, w_start:w_end] += mask * dout[n, c, i, j]
 
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
     return dx
 
-
+# working on
 class ThreeLayerConvNet(object):
   """
   A three-layer convolutional network with the following architecture:
@@ -305,7 +296,15 @@ class ThreeLayerConvNet(object):
     # the start of the loss() function to see how that happens.                #               
     ############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    C, H, W = input_dims
+    self.params['W1'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters, C, filter_size, filter_size))
+    self.params['b1'] = torch.zeros(num_filters)
+    self.params['W2'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters * H * W // 4, hidden_dim))
+    self.params['b2'] = torch.zeros(hidden_dim)
+    self.params['W3'] = torch.normal(mean = 0.0, std = weight_scale, size = (hidden_dim, num_classes))
+    self.params['b3'] = torch.zeros(num_classes)
+
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
@@ -356,7 +355,13 @@ class ThreeLayerConvNet(object):
     # Remember you can use the functions defined in your implementation above. #
     ############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    x, conv_cache = conv_relu_pool_forward(X, W1, b1, conv_param, pool_param)
+    x, hidn_cache = affine_relu_forward(x, W2, b2)
+    x, clas_cache = affine_forward(x, W3, b3)
+
+    scores = x.copy()
+
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
@@ -902,6 +907,7 @@ class SpatialBatchNorm(object):
 ################################################################################
 ################################################################################
 
+# done
 class FastConv(object):
 
   @staticmethod
@@ -931,7 +937,7 @@ class FastConv(object):
       dx, dw, db = torch.zeros_like(tx), torch.zeros_like(layer.weight), torch.zeros_like(layer.bias)
     return dx, dw, db
 
-
+# done
 class FastMaxPool(object):
 
   @staticmethod
@@ -955,7 +961,7 @@ class FastMaxPool(object):
     except RuntimeError:
       dx = torch.zeros_like(tx)
     return dx
-
+# done
 class Conv_ReLU(object):
 
   @staticmethod
@@ -984,7 +990,7 @@ class Conv_ReLU(object):
     dx, dw, db = FastConv.backward(da, conv_cache)
     return dx, dw, db
 
-
+# done
 class Conv_ReLU_Pool(object):
 
   @staticmethod
