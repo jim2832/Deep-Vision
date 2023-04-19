@@ -151,7 +151,7 @@ class Conv(object):
     return dx, dw, db
 
 
-class MaxPool(object):
+class MaxPool(object):  
 
   @staticmethod
   def forward(x, pool_param):
