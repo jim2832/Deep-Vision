@@ -106,7 +106,7 @@ class Conv(object):
     
     # 取得input和weight的shape
     x, w, b, conv_param = cache
-    _, _, output_height, output_weight = dout.shape
+    _, _, output_height, output_width = dout.shape
     N, C, H, W = x.shape
     F, _, HH, WW = w.shape
 
@@ -116,7 +116,7 @@ class Conv(object):
 
     # 設定 output 的維度
     # output_height = int((H + 2 * padding - HH) / stride + 1)
-    # output_weight = int((H + 2 * padding - WW) / stride + 1)
+    # output_width = int((H + 2 * padding - WW) / stride + 1)
 
     # 初始化梯度
     dx = torch.zeros_like(x)
@@ -133,7 +133,7 @@ class Conv(object):
     for n in range(N):
         for f in range(F):
             for i in range(output_height):
-                for j in range(output_weight):
+                for j in range(output_width):
                     # Calculate the current slice of x_pad and dout
                     slice_x = x_pad[n, :, i*stride:i*stride+HH, j*stride:j*stride+WW]
                     slice_dout = dout[n, f, i, j]
@@ -144,7 +144,7 @@ class Conv(object):
 
     # Remove the padding from dx
     dx = dx[:,:,padding:-padding,padding:-padding]
-    
+
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
@@ -177,7 +177,36 @@ class MaxPool(object):
     # TODO: Implement the max-pooling forward pass                              #
     #############################################################################
     # Replace "pass" statement with your code
-    pass
+
+    # set the variables
+    pool_height = pool_param["pool_height"]
+    pool_width = pool_param["pool_width"]
+    stride = pool_param["stride"]
+
+    # set the dimension
+    N, C, H, W = x.shape
+    out_height = int((H - pool_height) / stride) + 1
+    out_width = int((W - pool_width) / stride) + 1
+
+    # Initialize the output tensor and mask
+    out = torch.zeros(N, C, out_height, out_width).to(x.device)
+    mask = torch.zeros_like(x).to(x.device)
+
+    # Apply max pooling
+    for h in range(out_height):
+        for w in range(out_width):
+            h_start = h*stride
+            w_start = w*stride
+            h_end = h_start + pool_height
+            w_end = w_start + pool_width
+
+            pool_region = x[:, :, h_start:h_end, w_start:w_end]
+            pool_result, indices = torch.max(pool_region, dim=(2, 3))
+            out[:, :, h, w] = pool_result
+            mask = torch.zeros_like(pool_region)
+            mask.scatter_(2, indices.unsqueeze(2), 1.0)
+            mask[:, :, h_start:h_end, w_start:w_end] += mask
+
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
@@ -199,7 +228,29 @@ class MaxPool(object):
     # TODO: Implement the max-pooling backward pass                             #
     #############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    # set the variables
+    x, pool_param = cache
+    N, C, H, W = x.shape
+    pool_height = pool_param["pool_height"]
+    pool_width = pool_param["pool_width"]
+    stride = pool_param["stride"]
+
+    # initialization
+    dx = torch.zeros_like(x)
+
+    # Compute gradient of max pooling
+    for h in range(output_tensor.size(2)):
+        for w in range(output_tensor.size(3)):
+            h_start = h*stride
+            w_start = w*stride
+            h_end = h_start + pool_height
+            w_end = w_start + pool_width
+            pool_region = x[:, :, h_start:h_end, w_start:w_end]
+            mask = mask[:, :, h_start:h_end, w_start:w_end]
+            pool_grad = dx[:, :, h, w].unsqueeze(2).unsqueeze(3) * mask
+            dx[:, :, h_start:h_end, w_start:w_end] += pool_grad
+
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
