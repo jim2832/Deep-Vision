@@ -4,6 +4,7 @@ WARNING: you SHOULD NOT use ".to()" or ".cuda()" in each implementation block.
 """
 import torch
 import random
+import numpy as np
 from utils import Solver
 from helper import svm_loss, softmax_loss
 from fc_networks import *
@@ -224,13 +225,10 @@ class MaxPool(object):
 
     # Compute gradient for each element in the output
     for n in range(N):
-        # loop over the channels
         for c in range(C):
-            # loop over the height of output volume
             for i in range(out_height):
                 h_start = i * stride
                 h_end = h_start + pool_height
-                # loop over the width of output volume
                 for j in range(out_width):
                     w_start = j * stride
                     w_end = w_start + pool_width
@@ -298,17 +296,16 @@ class ThreeLayerConvNet(object):
     # Replace "pass" statement with your code
     
     C, H, W = input_dims
-    self.params['W1'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters, C, filter_size, filter_size))
-    self.params['b1'] = torch.zeros(num_filters)
-    self.params['W2'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters * H * W // 4, hidden_dim))
-    self.params['b2'] = torch.zeros(hidden_dim)
-    self.params['W3'] = torch.normal(mean = 0.0, std = weight_scale, size = (hidden_dim, num_classes))
-    self.params['b3'] = torch.zeros(num_classes)
-
+    self.params['W1'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters, C, filter_size, filter_size), dtype=self.dtype)
+    self.params['b1'] = torch.zeros(num_filters, dtype=self.dtype)
+    self.params['W2'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters * H * W // 4, hidden_dim), dtype=self.dtype)
+    self.params['b2'] = torch.zeros(hidden_dim, dtype=self.dtype)
+    self.params['W3'] = torch.normal(mean = 0.0, std = weight_scale, size = (hidden_dim, num_classes), dtype=self.dtype)
+    self.params['b3'] = torch.zeros(num_classes, dtype=self.dtype)
+        
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
-
 
   def save(self, path):
     checkpoint = {
@@ -334,9 +331,9 @@ class ThreeLayerConvNet(object):
     Input / output: Same API as TwoLayerNet.
     """
     X = X.to(self.dtype)
-    W1, b1 = self.params['W1'], self.params['b1']
-    W2, b2 = self.params['W2'], self.params['b2']
-    W3, b3 = self.params['W3'], self.params['b3']
+    W1, b1 = self.params['W1'].cuda(), self.params['b1'].cuda()
+    W2, b2 = self.params['W2'].cuda(), self.params['b2'].cuda()
+    W3, b3 = self.params['W3'].cuda(), self.params['b3'].cuda()
 
     # pass conv_param to the forward pass for the convolutional layer
     # Padding and stride chosen to preserve the input spatial size
@@ -356,11 +353,11 @@ class ThreeLayerConvNet(object):
     ############################################################################
     # Replace "pass" statement with your code
     
-    x, conv_cache = conv_relu_pool_forward(X, W1, b1, conv_param, pool_param)
-    x, hidn_cache = affine_relu_forward(x, W2, b2)
-    x, clas_cache = affine_forward(x, W3, b3)
+    x, conv_cache = Conv_ReLU_Pool.forward(X, W1, b1, conv_param, pool_param)
+    x, hidn_cache = Linear_ReLU.forward(x, W2, b2)
+    x, clas_cache = Linear.forward(x, W3, b3)
 
-    scores = x.copy()
+    scores = x
 
     ############################################################################
     #                             END OF YOUR CODE                             #
@@ -381,13 +378,29 @@ class ThreeLayerConvNet(object):
     # a factor of 0.5                                                          #
     ############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    l_softmax, g_softmax = softmax_loss(x, y)
+
+    dl_dx, grads['W3'], grads['b3'] = Linear.backward(g_softmax, clas_cache)
+    grads['W3'] += self.reg * W3
+    loss += torch.sum(torch.pow(W3, 2))
+
+    dl_dx, grads['W2'], grads['b2'] = Linear_ReLU.backward(dl_dx, hidn_cache)
+    grads['W2'] += self.reg * W2
+    loss += torch.sum(torch.pow(W2, 2))
+
+    dl_dx, grads['W1'], grads['b1'] = Conv_ReLU_Pool.backward(dl_dx, conv_cache)
+    grads['W1'] += self.reg * W1
+    loss += torch.sum(torch.pow(W1, 2))
+
+    loss = l_softmax + 0.5 * self.reg * loss
+
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
 
     return loss, grads
-
+# 
 class DeepConvNet(object):
   """
   A convolutional neural network with an arbitrary number of convolutional
@@ -907,7 +920,7 @@ class SpatialBatchNorm(object):
 ################################################################################
 ################################################################################
 
-# done
+
 class FastConv(object):
 
   @staticmethod
@@ -937,7 +950,7 @@ class FastConv(object):
       dx, dw, db = torch.zeros_like(tx), torch.zeros_like(layer.weight), torch.zeros_like(layer.bias)
     return dx, dw, db
 
-# done
+
 class FastMaxPool(object):
 
   @staticmethod
@@ -961,7 +974,7 @@ class FastMaxPool(object):
     except RuntimeError:
       dx = torch.zeros_like(tx)
     return dx
-# done
+
 class Conv_ReLU(object):
 
   @staticmethod
@@ -990,7 +1003,7 @@ class Conv_ReLU(object):
     dx, dw, db = FastConv.backward(da, conv_cache)
     return dx, dw, db
 
-# done
+
 class Conv_ReLU_Pool(object):
 
   @staticmethod
