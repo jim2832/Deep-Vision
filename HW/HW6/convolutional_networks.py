@@ -296,12 +296,12 @@ class ThreeLayerConvNet(object):
     # Replace "pass" statement with your code
     
     C, H, W = input_dims
-    self.params['W1'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters, C, filter_size, filter_size), dtype=self.dtype).cuda()
-    self.params['b1'] = torch.zeros(num_filters, dtype=self.dtype).cuda()
-    self.params['W2'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters * H * W // 4, hidden_dim), dtype=self.dtype).cuda()
-    self.params['b2'] = torch.zeros(hidden_dim, dtype=self.dtype).cuda()
-    self.params['W3'] = torch.normal(mean = 0.0, std = weight_scale, size = (hidden_dim, num_classes), dtype=self.dtype).cuda()
-    self.params['b3'] = torch.zeros(num_classes, dtype=self.dtype).cuda()
+    self.params['W1'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters, C, filter_size, filter_size), dtype=self.dtype, device=device)
+    self.params['b1'] = torch.zeros(num_filters, dtype=self.dtype, device=device)
+    self.params['W2'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters * H * W // 4, hidden_dim), dtype=self.dtype, device=device)
+    self.params['b2'] = torch.zeros(hidden_dim, dtype=self.dtype, device=device)
+    self.params['W3'] = torch.normal(mean = 0.0, std = weight_scale, size = (hidden_dim, num_classes), dtype=self.dtype, device=device)
+    self.params['b3'] = torch.zeros(num_classes, dtype=self.dtype, device=device)
         
     ############################################################################
     #                             END OF YOUR CODE                             #
@@ -472,22 +472,23 @@ class DeepConvNet(object):
     # to ones and zeros respectively.                                          #           
     ############################################################################
     # Replace "pass" statement with your code
-    
-    # 計算 input 的維度
-    input_dim = 1
-    for dim in input_dims:
-      input_dim *= dim
 
     # 初始化參數
-    dims = [input_dims, *num_filters, num_classes]
-    for i in range(1, self.num_layers+1):
-        self.params[f'W{i}'] = (torch.randn(dims[i-1], dims[i], dtype=dtype) * weight_scale).cuda()
-        self.params[f'b{i}'] = torch.zeros(dims[i], dtype=self.dtype).cuda()
+    # 第一層
+    self.params['W1'] = torch.randn(num_filters[0], input_dims[0], input_dims[1], input_dims[2], dtype=dtype, device=device) * weight_scale
+    self.params['b1'] = torch.zeros(num_filters[0], dtype=dtype, device=device)
+    
+    # 中間
+    for i in range(2, self.num_layers+1):
+        self.params[f'W{i}'] = torch.randn(num_filters[i], num_filters[i-1] , dtype=dtype, device=device) * weight_scale
+        self.params[f'b{i}'] = torch.zeros(num_filters[i], dtype=self.dtype, device=device)
     
     if self.batchnorm:
         for i in range(1, self.num_layers):
-            self.params[f'gamma{i}'] = torch.ones(dims[i], dtype=self.dtype).cuda()
-            self.params[f'beta{i}'] = torch.zeros(dims[i], dtype=self.dtype).cuda()
+            self.params[f'gamma{i}'] = torch.ones(num_filters[i-1], dtype=self.dtype, device=device)
+            self.params[f'beta{i}'] = torch.zeros(num_filters[i-1], dtype=self.dtype, device=device)
+    
+    # 最後一層
     
     ############################################################################
     #                             END OF YOUR CODE                             #
