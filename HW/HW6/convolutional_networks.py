@@ -245,7 +245,7 @@ class MaxPool(object):
     #############################################################################
     return dx
 
-# working on
+# done
 class ThreeLayerConvNet(object):
   """
   A three-layer convolutional network with the following architecture:
@@ -296,12 +296,12 @@ class ThreeLayerConvNet(object):
     # Replace "pass" statement with your code
     
     C, H, W = input_dims
-    self.params['W1'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters, C, filter_size, filter_size), dtype=self.dtype)
-    self.params['b1'] = torch.zeros(num_filters, dtype=self.dtype)
-    self.params['W2'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters * H * W // 4, hidden_dim), dtype=self.dtype)
-    self.params['b2'] = torch.zeros(hidden_dim, dtype=self.dtype)
-    self.params['W3'] = torch.normal(mean = 0.0, std = weight_scale, size = (hidden_dim, num_classes), dtype=self.dtype)
-    self.params['b3'] = torch.zeros(num_classes, dtype=self.dtype)
+    self.params['W1'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters, C, filter_size, filter_size), dtype=self.dtype).cuda()
+    self.params['b1'] = torch.zeros(num_filters, dtype=self.dtype).cuda()
+    self.params['W2'] = torch.normal(mean = 0.0, std = weight_scale, size = (num_filters * H * W // 4, hidden_dim), dtype=self.dtype).cuda()
+    self.params['b2'] = torch.zeros(hidden_dim, dtype=self.dtype).cuda()
+    self.params['W3'] = torch.normal(mean = 0.0, std = weight_scale, size = (hidden_dim, num_classes), dtype=self.dtype).cuda()
+    self.params['b3'] = torch.zeros(num_classes, dtype=self.dtype).cuda()
         
     ############################################################################
     #                             END OF YOUR CODE                             #
@@ -331,9 +331,9 @@ class ThreeLayerConvNet(object):
     Input / output: Same API as TwoLayerNet.
     """
     X = X.to(self.dtype)
-    W1, b1 = self.params['W1'].cuda(), self.params['b1'].cuda()
-    W2, b2 = self.params['W2'].cuda(), self.params['b2'].cuda()
-    W3, b3 = self.params['W3'].cuda(), self.params['b3'].cuda()
+    W1, b1 = self.params['W1'], self.params['b1']
+    W2, b2 = self.params['W2'], self.params['b2']
+    W3, b3 = self.params['W3'], self.params['b3']
 
     # pass conv_param to the forward pass for the convolutional layer
     # Padding and stride chosen to preserve the input spatial size
@@ -400,7 +400,8 @@ class ThreeLayerConvNet(object):
     ############################################################################
 
     return loss, grads
-# 
+
+# TODO
 class DeepConvNet(object):
   """
   A convolutional neural network with an arbitrary number of convolutional
@@ -626,6 +627,7 @@ def create_convolutional_solver_instance(data_dict, dtype, device):
   ################################################################################
   return solver
 
+
 def kaiming_initializer(Din, Dout, K=None, relu=True, device='cpu',
                         dtype=torch.float32):
   """
@@ -677,6 +679,7 @@ def kaiming_initializer(Din, Dout, K=None, relu=True, device='cpu',
     #                            END OF YOUR CODE                             #
     ###########################################################################
   return weight
+
 
 class BatchNorm(object):
 
@@ -975,6 +978,7 @@ class FastMaxPool(object):
       dx = torch.zeros_like(tx)
     return dx
 
+
 class Conv_ReLU(object):
 
   @staticmethod
@@ -1034,6 +1038,7 @@ class Conv_ReLU_Pool(object):
     da = ReLU.backward(ds, relu_cache)
     dx, dw, db = FastConv.backward(da, conv_cache)
     return dx, dw, db
+
 
 class Linear_BatchNorm_ReLU(object):
 
