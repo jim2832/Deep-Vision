@@ -328,6 +328,7 @@ class FullyConnectedNet(object):
     
     dh, grads[f'W{self.num_layers}'], grads[f'b{self.num_layers}'] = Linear.backward(dout, cache)
     grads[f'W{self.num_layers}'] += 2 * self.reg * self.params[f'W{self.num_layers}']
+    
     for i in range(self.num_layers - 1, 0, -1):
       if self.use_dropout:
         dh = Dropout.backward(dh, dropout_caches[i])
