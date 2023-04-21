@@ -644,6 +644,7 @@ class DeepConvNet(object):
 
     # linear layer
     lx_dx, grads[f'W{self.num_layers}'], grads[f'b{self.num_layers}'] = Linear.backward(dout, cache[f'ch{self.num_layers}linear'])
+    grads[f'W{self.num_layers}'] += 2 * self.reg * self.params[f'W{self.num_layers}']
 
     for i in reversed(range(1, self.num_layers)):
         if self.batchnorm:
