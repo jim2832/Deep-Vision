@@ -474,25 +474,46 @@ class DeepConvNet(object):
     # Replace "pass" statement with your code
 
     # 初始化參數
-    # 第一層
     C, H, W = input_dims
     filter_size = 3
-    self.params['W1'] = torch.randn(num_filters[0], C, filter_size, filter_size, dtype=dtype, device=device) * weight_scale
-    self.params['b1'] = torch.zeros(num_filters[0], dtype=dtype, device=device)
-    
-    # 中間
-    for i in range(2, self.num_layers):
-        self.params[f'W{i}'] = torch.randn(num_filters[i-1], num_filters[i-2], filter_size, filter_size , dtype=dtype, device=device) * weight_scale
-        self.params[f'b{i}'] = torch.zeros(num_filters[i-1], dtype=self.dtype, device=device)
-    
-    # 最後一層
-    self.params[f'W{self.num_layers}'] = torch.randn(num_filters[-1] * (H // (2**len(max_pools))) * (W // (2**len(max_pools))), num_classes, dtype=self.dtype, device=device) * weight_scale
-    self.params[f'b{self.num_layers}'] = torch.zeros(num_classes, dtype=self.dtype, device=device)
-    
-    if self.batchnorm:
-        for i in range(1, self.num_layers):
-            self.params[f'gamma{i}'] = torch.ones(num_filters[i-1], dtype=self.dtype, device=device)
-            self.params[f'beta{i}'] = torch.zeros(num_filters[i-1], dtype=self.dtype, device=device)
+
+    if weight_scale == 'kaiming':
+      # 第一層
+      self.params['W1'] = kaiming_initializer(C, num_filters[0], K=filter_size, relu=True, dtype=dtype, device=device)
+      self.params['b1'] = torch.zeros(num_filters[0], dtype=dtype, device=device)
+      
+      # 中間
+      for i in range(2, self.num_layers):
+          self.params[f'W{i}'] = kaiming_initializer(num_filters[i-2], num_filters[i-1], K=filter_size, relu=True, dtype=dtype, device=device)
+          self.params[f'b{i}'] = torch.zeros(num_filters[i-1], dtype=self.dtype, device=device)
+      
+      # 最後一層
+      self.params[f'W{self.num_layers}'] = kaiming_initializer(num_filters[-1] * (H // (2 ** len(max_pools))) * (W // (2 ** len(max_pools))), num_classes, relu=False, dtype=dtype, device=device)
+      self.params[f'b{self.num_layers}'] = torch.zeros(num_classes, dtype=self.dtype, device=device)
+      
+      if self.batchnorm:
+          for i in range(1, self.num_layers):
+              self.params[f'gamma{i}'] = torch.ones(num_filters[i-1], dtype=self.dtype, device=device)
+              self.params[f'beta{i}'] = torch.zeros(num_filters[i-1], dtype=self.dtype, device=device)
+
+    else:
+      # 第一層
+      self.params['W1'] = torch.randn(num_filters[0], C, filter_size, filter_size, dtype=dtype, device=device) * weight_scale
+      self.params['b1'] = torch.zeros(num_filters[0], dtype=dtype, device=device)
+      
+      # 中間
+      for i in range(2, self.num_layers):
+          self.params[f'W{i}'] = torch.randn(num_filters[i-1], num_filters[i-2], filter_size, filter_size , dtype=dtype, device=device) * weight_scale
+          self.params[f'b{i}'] = torch.zeros(num_filters[i-1], dtype=self.dtype, device=device)
+      
+      # 最後一層
+      self.params[f'W{self.num_layers}'] = torch.randn(num_filters[-1] * (H // (2**len(max_pools))) * (W // (2**len(max_pools))), num_classes, dtype=self.dtype, device=device) * weight_scale
+      self.params[f'b{self.num_layers}'] = torch.zeros(num_classes, dtype=self.dtype, device=device)
+      
+      if self.batchnorm:
+          for i in range(1, self.num_layers):
+              self.params[f'gamma{i}'] = torch.ones(num_filters[i-1], dtype=self.dtype, device=device)
+              self.params[f'beta{i}'] = torch.zeros(num_filters[i-1], dtype=self.dtype, device=device)
     
     ############################################################################
     #                             END OF YOUR CODE                             #
@@ -664,10 +685,10 @@ class DeepConvNet(object):
         
         # 累加 loss 和 梯度
         grads[f'W{i}'] += 2 * self.reg * self.params[f'W{i}']
-        loss += torch.sum(self.params[f'W{i}'] * self.params[f'W{i}'])
+        loss += torch.sum(self.params[f'W{i}'] ** 2)
       
     # 計算 loss
-    loss = 0.5 * self.reg * loss + loss_soft
+    loss = self.reg * loss + loss_soft
     
     ############################################################################
     #                             END OF YOUR CODE                             #
@@ -683,7 +704,10 @@ def find_overfit_parameters():
   # training accuracy within 30 epochs.                                      #
   ############################################################################
   # Replace "pass" statement with your code
-  pass
+  
+  weight_scale = 1e-1
+  learning_rate = 5e-3
+  
   ############################################################################
   #                             END OF YOUR CODE                             #
   ############################################################################
@@ -697,7 +721,38 @@ def create_convolutional_solver_instance(data_dict, dtype, device):
   # TODO: Train the best DeepConvNet that you can on CIFAR-10 within 60 seconds. #
   ################################################################################
   # Replace "pass" statement with your code
-  pass
+  
+  data = {
+    'X_train': data_dict['X_train'],
+    'y_train': data_dict['y_train'],
+    'X_val': data_dict['X_val'],
+    'y_val': data_dict['y_val'],
+  }
+  
+  input_dims = data_dict['X_train'].shape[1:]
+  num_epochs = 20
+  lr = 5e-3
+
+  model = DeepConvNet(input_dims=input_dims, 
+                      num_classes=10,
+                      num_filters=[32,64,128],
+                      max_pools=[0,1,2],
+                      weight_scale='kaiming',
+                      batchnorm=False,
+                      reg=5e-4,
+                      dtype=torch.float32,
+                      device=device)
+
+  solver = Solver(model, data,
+                  num_epochs=num_epochs, 
+                  batch_size=128,
+                  update_rule=adam,
+                  optim_config={
+                    'learning_rate': lr,
+                  },
+                  print_every=10000, 
+                  device='cuda')
+
   ################################################################################
   #                              END OF YOUR CODE                                #
   ################################################################################
@@ -737,7 +792,7 @@ def kaiming_initializer(Din, Dout, K=None, relu=True, device='cpu',
     # The output should be a tensor in the designated size, dtype, and device.#
     ###########################################################################
     # Replace "pass" statement with your code
-    pass
+    weight = torch.randn(Din, Dout, dtype=dtype, device=device) * ((gain / Din) ** 0.5)
     ###########################################################################
     #                            END OF YOUR CODE                             #
     ###########################################################################
@@ -750,7 +805,7 @@ def kaiming_initializer(Din, Dout, K=None, relu=True, device='cpu',
     # The output should be a tensor in the designated size, dtype, and device.#
     ###########################################################################
     # Replace "pass" statement with your code
-    pass
+    weight = torch.randn(Dout, Din, K, K, dtype=dtype, device=device) * ((gain / (Din * K * K)) ** 0.5)
     ###########################################################################
     #                            END OF YOUR CODE                             #
     ###########################################################################
@@ -901,7 +956,7 @@ class BatchNorm(object):
     dgamma = torch.sum(x_hat * dout, axis=0)
 
     dvar = torch.sum(gamma * dout * (x - sample_mean) * (-0.5) * torch.pow(sample_var + eps, -1.5), axis=0)
-    dmean = torch.sum(gamma * dout * (-1.0) * torch.power(sample_var + eps, -0.5), axis=0) + dvar * (-2.0 / N) * torch.sum(x - sample_mean, axis=0)
+    dmean = torch.sum(gamma * dout * (-1.0) * torch.pow(sample_var + eps, -0.5), axis=0) + dvar * (-2.0 / N) * torch.sum(x - sample_mean, axis=0)
     dx = dout * gamma * torch.pow(sample_var + eps, -0.5) + dvar * 2.0 * (x - sample_mean) / N + dmean / N
 
     ###########################################################################
@@ -990,12 +1045,12 @@ class SpatialBatchNorm(object):
     momentum = bn_param.get("momentum", 0.9)
 
     N, C, H, W = x.shape
-    running_mean = bn_param.get("running_mean", torch.zeros(C, dtype=x.dtype))
-    running_var = bn_param.get("running_var", torch.zeros(C, dtype=x.dtype))
+    running_mean = bn_param.get("running_mean", torch.zeros(C, dtype=x.dtype).cuda())
+    running_var = bn_param.get("running_var", torch.zeros(C, dtype=x.dtype).cuda())
 
     if mode == 'train':
-      sample_mean = torch.mean(x, axis=(0, 2, 3))
-      sample_var = torch.var(x, axis=(0, 2, 3))
+      sample_mean = torch.mean(x, axis=(0, 2, 3)).cuda()
+      sample_var = torch.var(x, axis=(0, 2, 3)).cuda()
       running_mean = momentum * running_mean + (1 - momentum) * sample_mean
       running_var = momentum * running_var + (1 - momentum) * sample_var
           
