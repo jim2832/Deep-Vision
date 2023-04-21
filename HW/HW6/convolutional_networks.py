@@ -401,7 +401,7 @@ class ThreeLayerConvNet(object):
 
     return loss, grads
 
-# TODO
+# done
 class DeepConvNet(object):
   """
   A convolutional neural network with an arbitrary number of convolutional
@@ -696,6 +696,7 @@ class DeepConvNet(object):
 
     return loss, grads
 
+# done
 def find_overfit_parameters():
   weight_scale = 2e-3   # Experiment with this!
   learning_rate = 1e-5  # Experiment with this!
@@ -713,7 +714,7 @@ def find_overfit_parameters():
   ############################################################################
   return weight_scale, learning_rate
 
-
+# done
 def create_convolutional_solver_instance(data_dict, dtype, device):
   model = None
   solver = None
@@ -758,7 +759,7 @@ def create_convolutional_solver_instance(data_dict, dtype, device):
   ################################################################################
   return solver
 
-
+# done
 def kaiming_initializer(Din, Dout, K=None, relu=True, device='cpu',
                         dtype=torch.float32):
   """
@@ -1040,34 +1041,12 @@ class SpatialBatchNorm(object):
     ###########################################################################
     # Replace "pass" statement with your code
     
-    mode = bn_param["mode"]
-    eps = bn_param.get("eps", 1e-5)
-    momentum = bn_param.get("momentum", 0.9)
-
     N, C, H, W = x.shape
-    running_mean = bn_param.get("running_mean", torch.zeros(C, dtype=x.dtype).cuda())
-    running_var = bn_param.get("running_var", torch.zeros(C, dtype=x.dtype).cuda())
-
-    if mode == 'train':
-      sample_mean = torch.mean(x, axis=(0, 2, 3)).cuda()
-      sample_var = torch.var(x, axis=(0, 2, 3)).cuda()
-      running_mean = momentum * running_mean + (1 - momentum) * sample_mean
-      running_var = momentum * running_var + (1 - momentum) * sample_var
-          
-      x_hat = (x - sample_mean[None, :, None, None]) / torch.sqrt(sample_var[None, :, None, None] + eps)
-      out = gamma[None, :, None, None] * x_hat + beta[None, :, None, None]
-
-      cache = x, x_hat, sample_mean, sample_var, eps, gamma
-    
-    elif mode == 'test':
-      x_hat = (x - running_mean[None, :, None, None])/torch.sqrt(running_var[None, :, None, None] + eps)
-      out = gamma[None, :, None, None] * x_hat + beta[None, :, None, None]
-    
-    else:
-      raise ValueError('Invalid forward batchnorm mode "%s"' % mode)
-
-    bn_param["running_mean"] = running_mean
-    bn_param["running_var"] = running_var
+    x = x.permute(0, 2, 3, 1).reshape(N * H * W, C)
+    # x = x.reshape(N * H * W, C)
+    out, cache = BatchNorm.forward(x, gamma, beta, bn_param)
+    out = out.reshape(N, H, W, C).permute(0, 3, 1, 2)
+    # out = out.reshape(N, C, H, W)
 
     ###########################################################################
     #                             END OF YOUR CODE                            #
@@ -1099,14 +1078,11 @@ class SpatialBatchNorm(object):
     # Replace "pass" statement with your code
     
     N, C, H, W = dout.shape
-    M = N * H * W
-    x, x_hat, sample_mean, sample_var, eps, gamma = cache
-    dbeta = torch.sum(dout, axis=(0, 2, 3))
-    dgamma = torch.sum(x_hat * dout, axis=(0, 2, 3))
-    dxhat = dout * gamma[None, :, None, None]
-    dx = (1. / (M * torch.sqrt(sample_var + eps)[None, :, None, None])) *\
-         (M*dxhat - (torch.sum(dxhat, axis=(0, 2, 3))[None, :, None, None]) -\
-         (x_hat*torch.sum(dxhat*x_hat, axis=(0, 2, 3))[None, :, None, None]))
+    dout = dout.permute(0, 2, 3, 1).reshape(N * H * W, C)
+    # dout = dout.reshape(N * H * W, C)
+    dx, dgamma, dbeta = BatchNorm.backward_alt(dout, cache)
+    dx = dx.reshape(N, H, W, C).permute(0, 3, 1, 2)
+    # dx = dx.reshape(N, C, H, W)
 
     ###########################################################################
     #                             END OF YOUR CODE                            #
