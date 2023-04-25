@@ -325,7 +325,16 @@ class PlainBlock(nn.Module):
     # Store the result in self.net.                                             #
     #############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    self.net = nn.Sequential(
+      nn.BatchNorm2d(Cin),
+      nn.ReLU(),
+      nn.Conv2d(Cin, Cout, (3,3), stride=2 if downsample else 1, padding=1),
+      nn.BatchNorm2d(Cout),
+      nn.ReLU(),
+      nn.Conv2d(Cout, Cout, (3,3), padding=1),
+    )
+
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
@@ -349,7 +358,14 @@ class ResidualBlock(nn.Module):
     # Store the main block in self.block and the shortcut in self.shortcut.     #
     #############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    self.block = PlainBlock(Cin, Cout, downsample)
+
+    if downsample or Cin != Cout:
+        self.shortcut = nn.Conv2d(Cin, Cout, kernel_size=1, stride=2 if downsample else 1)
+    else:
+      self.shortcut = nn.Identity()
+
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
@@ -369,7 +385,17 @@ class ResNet(nn.Module):
     # Store the model in self.cnn.                                              #
     #############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    block = block
+
+    self.cnn = nn.Sequential(ResNetStem(Cin, stage_args[0][0]))
+
+    for stage_idx in range(len(stage_args)):
+      self.cnn.append(ResNetStage(stage_args[stage_idx][0],
+                                  stage_args[stage_idx][1],
+                                  stage_args[stage_idx][2],
+                                  stage_args[stage_idx][3]))
+
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
@@ -428,8 +454,7 @@ class ResNetStem(nn.Module):
     return self.net(x)
 
 class ResNetStage(nn.Module):
-  def __init__(self, Cin, Cout, num_blocks, downsample=True,
-               block=ResidualBlock):
+  def __init__(self, Cin, Cout, num_blocks, downsample=True, block=ResidualBlock):
     super().__init__()
     blocks = [block(Cin, Cout, downsample)]
     for _ in range(num_blocks - 1):
