@@ -359,8 +359,10 @@ class ResidualBlock(nn.Module):
     #############################################################################
     # Replace "pass" statement with your code
     
+    # Plain block
     self.block = PlainBlock(Cin, Cout, downsample)
 
+    # Residual block
     if downsample or Cin != Cout:
         self.shortcut = nn.Conv2d(Cin, Cout, kernel_size=1, stride=2 if downsample else 1)
     else:
@@ -385,8 +387,6 @@ class ResNet(nn.Module):
     # Store the model in self.cnn.                                              #
     #############################################################################
     # Replace "pass" statement with your code
-    
-    block = block
 
     self.cnn = nn.Sequential(ResNetStem(Cin, stage_args[0][0]))
 
@@ -394,7 +394,8 @@ class ResNet(nn.Module):
       self.cnn.append(ResNetStage(stage_args[stage_idx][0],
                                   stage_args[stage_idx][1],
                                   stage_args[stage_idx][2],
-                                  stage_args[stage_idx][3]))
+                                  stage_args[stage_idx][3],
+                                  block))
 
     #############################################################################
     #                              END OF YOUR CODE                             #
@@ -408,7 +409,12 @@ class ResNet(nn.Module):
     # Store the output in `scores`.                                             #
     #############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    x = self.cnn(x)
+    x = nn.AdaptiveAvgPool2d((1,1))(x)
+    x = x.view(x.size(0), -1)
+    scores = self.fc(x)
+
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
@@ -430,7 +436,26 @@ class ResidualBottleneckBlock(nn.Module):
     # Store the main block in self.block and the shortcut in self.shortcut.     #
     #############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    # Plain block
+    self.block = nn.Sequential(
+      nn.BatchNorm2d(Cin),
+      nn.ReLU(),
+      nn.Conv2d(Cin, Cout//4, (1,1), stride=2 if downsample else 1),
+      nn.BatchNorm2d(Cout//4),
+      nn.ReLU(),
+      nn.Conv2d(Cout//4, Cout//4, (3,3), padding=1),
+      nn.BatchNorm2d(Cout//4),
+      nn.ReLU(),
+      nn.Conv2d(Cout//4, Cout, (1,1)),
+    )
+
+    # Residual block
+    if downsample or Cin != Cout:
+        self.shortcut = nn.Conv2d(Cin, Cout, kernel_size=1, stride=2 if downsample else 1)
+    else:
+      self.shortcut = nn.Identity()
+
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
