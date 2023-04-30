@@ -102,7 +102,14 @@ def rnn_step_forward(x, prev_h, Wx, Wh, b):
     # Hint: You can use torch.tanh()                                             #
     ##############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    # Compute the hidden state for this timestep
+    a = torch.mm(x, Wx) + torch.mm(prev_h, Wh) + b
+    next_h = torch.tanh(a)
+
+    #存cache
+    cache = (x, prev_h, Wx, Wh, a)
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -132,7 +139,21 @@ def rnn_step_backward(dnext_h, cache):
     # of the output value from tanh.                                             #
     ##############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    x, prev_h, Wx, Wh, a = cache
+
+    # Compute the gradients with respect to the input to the multiplication
+    da = dnext_h * torch.tanh(a).grad
+
+    # Compute the gradients with respect to the weights and biases
+    dWx = torch.mm(x.t(), da)
+    dWh = torch.mm(prev_h.t(), da)
+    db = torch.sum(da, dim=0, keepdim=True)
+
+    # Compute the gradients with respect to the input and previous hidden state
+    dx = torch.mm(da, Wx.t())
+    dprev_h = torch.mm(da, Wh.t())
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -164,7 +185,34 @@ def rnn_forward(x, h0, Wx, Wh, b):
     # above. You can use a for loop to help compute the forward pass.            #
     ##############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    seq_len, batch_size, input_size = x.shape
+    hidden_size = Wh.shape[0]
+
+    # Initialize hidden states and cache
+    h = torch.zeros(seq_len, batch_size, hidden_size)
+    cache = []
+
+    # Set initial hidden state
+    h_prev = h0
+
+    # Loop over the input sequence
+    for t in range(seq_len):
+        # Compute intermediate activation value
+        a_t = torch.mm(x[t], Wx) + torch.mm(h_prev, Wh) + b
+
+        # Compute next hidden state using the tanh activation function
+        h_t = torch.tanh(a_t)
+
+        # Store the current hidden state and intermediate values in cache
+        cache.append((h_prev, x[t], a_t, h_t))
+
+        # Update previous hidden state for the next time step
+        h_prev = h_t
+
+        # Store current hidden state in output sequence
+        h[t] = h_t
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -197,7 +245,42 @@ def rnn_backward(dh, cache):
     # defined above. You can use a for loop to help compute the backward pass.   #
     ##############################################################################
     # Replace "pass" statement with your code
-    pass
+    
+    seq_len, batch_size, input_size = x.shape
+    hidden_size = Wh.shape[0]
+
+    # Initialize gradients
+    dx = torch.zeros(seq_len, batch_size, input_size)
+    dh_prev = torch.zeros(batch_size, hidden_size)
+    dWx = torch.zeros(input_size, hidden_size)
+    dWh = torch.zeros(hidden_size, hidden_size)
+    db = torch.zeros(hidden_size)
+
+    # Loop over the input sequence in reverse order
+    for t in reversed(range(seq_len)):
+        # Get cached values
+        h_prev, x_t, a_t, h_t = cache[t]
+
+        # Compute the upstream gradients for the current time step
+        dh_current = dh[t] + dh_prev
+
+        # Compute gradients with respect to the tanh activation function
+        da_t = dh_current * (1 - h_t.pow(2))
+
+        # Compute gradients with respect to the bias vector
+        db += torch.sum(da_t, dim=0)
+
+        # Compute gradients with respect to the input and hidden state weight matrices
+        dWx += torch.mm(x_t.t(), da_t)
+        dWh += torch.mm(h_prev.t(), da_t)
+
+        # Compute gradients with respect to the input sequence and previous hidden state
+        dx[t] = torch.mm(da_t, Wx.t())
+        dh_prev = torch.mm(da_t, Wh.t())
+
+    # Gradients with respect to initial hidden state
+    dh0 = dh_prev
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
