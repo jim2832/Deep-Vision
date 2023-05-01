@@ -7,69 +7,72 @@ import torch
 import math
 import torch.nn as nn
 from helper import *
-from torch.nn.parameter import Parameter 
+from torch.nn.parameter import Parameter
+
 
 def hello_rnn_captioning():
-  """
-  This is a sample function that we will try to import and run to ensure that
-  our environment is correctly set up.
-  """
-  print('Hello from rnn_captioning.py!')
+    """
+    This is a sample function that we will try to import and run to ensure that
+    our environment is correctly set up.
+    """
+    print('Hello from rnn_captioning.py!')
+
 
 class FeatureExtractor(object):
-  """
-  Image feature extraction with MobileNet.
-  """
-  def __init__(self, pooling=False, verbose=False,
-               device='cpu', dtype=torch.float32):
-
-    from torchvision import transforms, models
-    from torchsummary import summary
-    self.preprocess = transforms.Compose([
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-    self.device, self.dtype = device, dtype
-    self.mobilenet = models.mobilenet_v2(weights=True).to(device)
-    self.mobilenet = nn.Sequential(*list(self.mobilenet.children())[:-1]) # Remove the last classifier
-    
-    # average pooling
-    if pooling:
-      self.mobilenet.add_module('LastAvgPool', nn.AvgPool2d(4, 4)) # input: N x 1280 x 4 x 4
-    
-    self.mobilenet.eval()
-    if verbose:
-      summary(self.mobilenet, (3, 112, 112))
-  
-  def extract_mobilenet_feature(self, img, verbose=False):
     """
-    Inputs:
-    - img: Batch of resized images, of shape N x 3 x 112 x 112
-
-    Outputs:
-    - feat: Image feature, of shape N x 1280 (pooled) or N x 1280 x 4 x 4
+    Image feature extraction with MobileNet.
     """
-    num_img = img.shape[0]
-    
-    img_prepro = []
-    for i in range(num_img):
-      img_prepro.append(self.preprocess(img[i].type(self.dtype).div(255.)))
-    img_prepro = torch.stack(img_prepro).to(self.device)
-    
-    with torch.no_grad():
-      feat = []
-      process_batch = 500
-      for b in range(math.ceil(num_img/process_batch)):
-        feat.append(self.mobilenet(img_prepro[b*process_batch:(b+1)*process_batch]
-                                ).squeeze(-1).squeeze(-1)) # forward and squeeze
-      feat = torch.cat(feat)
-      
-      # add l2 normalization
-      F.normalize(feat, p=2, dim=1)
-    
-    if verbose:
-      print('Output feature shape: ', feat.shape)
-    
-    return feat
+
+    def __init__(self, pooling=False, verbose=False,
+                 device='cpu', dtype=torch.float32):
+
+        from torchvision import transforms, models
+        from torchsummary import summary
+        self.preprocess = transforms.Compose([
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),])
+        self.device, self.dtype = device, dtype
+        self.mobilenet = models.mobilenet_v2(weights=True).to(device)
+        # Remove the last classifier
+        self.mobilenet = nn.Sequential(*list(self.mobilenet.children())[:-1])
+
+        # average pooling
+        if pooling:
+            # input: N x 1280 x 4 x 4
+            self.mobilenet.add_module('LastAvgPool', nn.AvgPool2d(4, 4))
+
+        self.mobilenet.eval()
+        if verbose:
+            summary(self.mobilenet, (3, 112, 112))
+
+    def extract_mobilenet_feature(self, img, verbose=False):
+        """
+        Inputs:
+        - img: Batch of resized images, of shape N x 3 x 112 x 112
+
+        Outputs:
+        - feat: Image feature, of shape N x 1280 (pooled) or N x 1280 x 4 x 4
+        """
+        num_img = img.shape[0]
+
+        img_prepro = []
+        for i in range(num_img):
+            img_prepro.append(self.preprocess(img[i].type(self.dtype).div(255.)))
+        img_prepro = torch.stack(img_prepro).to(self.device)
+
+        with torch.no_grad():
+            feat = []
+            process_batch = 500
+            for b in range(math.ceil(num_img/process_batch)):
+                feat.append(self.mobilenet(img_prepro[b*process_batch:(b+1)*process_batch]).squeeze(-1).squeeze(-1))  # forward and squeeze
+            feat = torch.cat(feat)
+
+            # add l2 normalization
+            F.normalize(feat, p=2, dim=1)
+
+        if verbose:
+            print('Output feature shape: ', feat.shape)
+
+        return feat
 
 
 ##############################################################################
@@ -102,9 +105,9 @@ def rnn_step_forward(x, prev_h, Wx, Wh, b):
     # Hint: You can use torch.tanh()                                             #
     ##############################################################################
     # Replace "pass" statement with your code
-    
+
     # 計算單次的 hidden state
-    a = torch.mm(x, Wx) + torch.mm(prev_h, Wh) + b
+    a = torch.matmul(x, Wx) + torch.matmul(prev_h, Wh) + b
     next_h = torch.tanh(a)
 
     # 將結果存到cache
@@ -139,17 +142,17 @@ def rnn_step_backward(dnext_h, cache):
     # of the output value from tanh.                                             #
     ##############################################################################
     # Replace "pass" statement with your code
-    
+
     x, prev_h, Wx, Wh, a = cache
 
     # 計算 activation function tanh 的梯度
     dtanh = dnext_h * (1 - torch.tanh(a) * torch.tanh(a))
 
     # 計算各個參數的梯度
-    dx = torch.mm(dtanh, torch.t(Wx))
-    dprev_h = torch.mm(dtanh, torch.t(Wh))
-    dWx = torch.mm(torch.t(x), dtanh)
-    dWh = torch.mm(torch.t(prev_h), dtanh)
+    dx = torch.matmul(dtanh, torch.t(Wx))
+    dprev_h = torch.matmul(dtanh, torch.t(Wh))
+    dWx = torch.matmul(torch.t(x), dtanh)
+    dWh = torch.matmul(torch.t(prev_h), dtanh)
     db = torch.sum(dtanh, dim=0)
 
     ##############################################################################
@@ -183,7 +186,7 @@ def rnn_forward(x, h0, Wx, Wh, b):
     # above. You can use a for loop to help compute the forward pass.            #
     ##############################################################################
     # Replace "pass" statement with your code
-    
+
     N, T, D = x.shape
     _, H = h0.shape
 
@@ -200,7 +203,7 @@ def rnn_forward(x, h0, Wx, Wh, b):
         # 提取現在time step 的 input
         xt = x[:, t, :]
 
-        # forward pass
+        # forward pass (參數共享)
         curr_h, cache_t = rnn_step_forward(xt, curr_h, Wx, Wh, b)
 
         # 儲存結果
@@ -221,7 +224,7 @@ def rnn_backward(dh, cache):
 
     Inputs:
     - dh: Upstream gradients of all hidden states, of shape (N, T, H). 
-    
+
     NOTE: 'dh' contains the upstream gradients produced by the 
     individual loss functions at each timestep, *not* the gradients
     being passed between timesteps (which you'll have to compute yourself
@@ -241,7 +244,7 @@ def rnn_backward(dh, cache):
     # defined above. You can use a for loop to help compute the backward pass.   #
     ##############################################################################
     # Replace "pass" statement with your code
-    
+
     N, T, H = dh.shape
     x, h0, Wx, Wh, b = cache[0]
     D = x.shape[1]
@@ -283,93 +286,93 @@ def rnn_backward(dh, cache):
 # through the code as you will write modules on your own later.              #
 ##############################################################################
 class RNN(nn.Module):
-  """
-  A single-layer vanilla RNN module.
-  
-  Arguments for initialization:
-  - input_size: Input size, denoted as D before
-  - hidden_size: Hidden size, denoted as H before
-  """
-  def __init__(self, input_size, hidden_size, device='cpu',
-                dtype=torch.float32):
     """
-    Initialize a RNN.
-    Model parameters to initialize:
-    - Wx: Weight matrix for input-to-hidden connections, of shape (D, H)
-    - Wh: Weight matrix for hidden-to-hidden connections, of shape (H, H)
-    - b: Biases, of shape (H,)
-    """
-    super().__init__()
-    
-    # Register parameters
-    self.Wx = Parameter(torch.randn(input_size, hidden_size,
-                       device=device, dtype=dtype).div(math.sqrt(input_size)))
-    self.Wh = Parameter(torch.randn(hidden_size, hidden_size,
-                       device=device, dtype=dtype).div(math.sqrt(hidden_size)))
-    self.b = Parameter(torch.zeros(hidden_size,
-                       device=device, dtype=dtype))
-    
-  def forward(self, x, h0):
-    """
-    Inputs:
-    - x: Input data for the entire timeseries, of shape (N, T, D)
-    - h0: Initial hidden state, of shape (N, H)
+    A single-layer vanilla RNN module.
 
-    Outputs:
-    - hn: The hidden state output
+    Arguments for initialization:
+    - input_size: Input size, denoted as D before
+    - hidden_size: Hidden size, denoted as H before
     """
-    hn, _ = rnn_forward(x, h0, self.Wx, self.Wh, self.b)
-    return hn
-  
-  def step_forward(self, x, prev_h):
-    """
-    Inputs:
-    - x: Input data for one time step, of shape (N, D)
-    - prev_h: The previous hidden state, of shape (N, H)
 
-    Outputs:
-    - next_h: The next hidden state, of shape (N, H)
-    """
-    next_h, _ = rnn_step_forward(x, prev_h, self.Wx, self.Wh, self.b)
-    return next_h
-    
+    def __init__(self, input_size, hidden_size, device='cpu',
+                 dtype=torch.float32):
+        """
+        Initialize a RNN.
+        Model parameters to initialize:
+        - Wx: Weight matrix for input-to-hidden connections, of shape (D, H)
+        - Wh: Weight matrix for hidden-to-hidden connections, of shape (H, H)
+        - b: Biases, of shape (H,)
+        """
+        super().__init__()
+
+        # Register parameters
+        self.Wx = Parameter(torch.randn(input_size, hidden_size, device=device, dtype=dtype).div(math.sqrt(input_size)))
+        self.Wh = Parameter(torch.randn(hidden_size, hidden_size, device=device, dtype=dtype).div(math.sqrt(hidden_size)))
+        self.b = Parameter(torch.zeros(hidden_size, device=device, dtype=dtype))
+
+    def forward(self, x, h0):
+        """
+        Inputs:
+        - x: Input data for the entire timeseries, of shape (N, T, D)
+        - h0: Initial hidden state, of shape (N, H)
+
+        Outputs:
+        - hn: The hidden state output
+        """
+        hn, _ = rnn_forward(x, h0, self.Wx, self.Wh, self.b)
+        return hn
+
+    def step_forward(self, x, prev_h):
+        """
+        Inputs:
+        - x: Input data for one time step, of shape (N, D)
+        - prev_h: The previous hidden state, of shape (N, H)
+
+        Outputs:
+        - next_h: The next hidden state, of shape (N, H)
+        """
+        next_h, _ = rnn_step_forward(x, prev_h, self.Wx, self.Wh, self.b)
+        return next_h
+
 
 class WordEmbedding(nn.Module):
-  """
-  Simplified version of torch.nn.Embedding.
+    """
+    Simplified version of torch.nn.Embedding.
 
-  We operate on minibatches of size N where
-  each sequence has length T. We assume a vocabulary of V words, assigning each
-  word to a vector of dimension D.
+    We operate on minibatches of size N where
+    each sequence has length T. We assume a vocabulary of V words, assigning each
+    word to a vector of dimension D.
 
-  Inputs:
-  - x: Integer array of shape (N, T) giving indices of words. Each element idx
-    of x muxt be in the range 0 <= idx < V.
+    Inputs:
+    - x: Integer array of shape (N, T) giving indices of words. Each element idx
+      of x muxt be in the range 0 <= idx < V.
 
-  Returns a tuple of:
-  - out: Array of shape (N, T, D) giving word vectors for all input words.
-  """
-  def __init__(self, vocab_size, embed_size,
-               device='cpu', dtype=torch.float32):
-      super().__init__()
-      
-      # Register parameters
-      self.W_embed = Parameter(torch.randn(vocab_size, embed_size,
-                         device=device, dtype=dtype).div(math.sqrt(vocab_size)))
-      
-  def forward(self, x):
-      out = None
-      ##############################################################################
-      # TODO: Implement the forward pass for word embeddings.                      #
-      #                                                                            #
-      # HINT: This can be done in one line using PyTorch's array indexing.         #
-      ##############################################################################
-      # Replace "pass" statement with your code
-      pass
-      ##############################################################################
-      #                               END OF YOUR CODE                             #
-      ##############################################################################
-      return out
+    Returns a tuple of:
+    - out: Array of shape (N, T, D) giving word vectors for all input words.
+    """
+
+    def __init__(self, vocab_size, embed_size,
+                 device='cpu', dtype=torch.float32):
+        super().__init__()
+
+        # Register parameters
+        self.W_embed = Parameter(torch.randn(vocab_size, embed_size, device=device, dtype=dtype).div(math.sqrt(vocab_size)))
+
+    def forward(self, x):
+        out = None
+        ##############################################################################
+        # TODO: Implement the forward pass for word embeddings.                      #
+        #                                                                            #
+        # HINT: This can be done in one line using PyTorch's array indexing.         #
+        ##############################################################################
+        # Replace "pass" statement with your code
+
+        out = self.W_embed[x]
+
+        ##############################################################################
+        #                               END OF YOUR CODE                             #
+        ##############################################################################
+        return out
 
 
 def temporal_softmax_loss(x, y, ignore_index=None):
@@ -396,7 +399,7 @@ def temporal_softmax_loss(x, y, ignore_index=None):
     - loss: Scalar giving loss
     """
     loss = None
-    
+
     ##############################################################################
     # TODO: Implement the temporal softmax loss function.                        #
     #                                                                            #
@@ -408,11 +411,14 @@ def temporal_softmax_loss(x, y, ignore_index=None):
     # all timesteps and *averaging* across the minibatch.                        #
     ##############################################################################
     # Replace "pass" statement with your code
-    pass
+
+    # 計算 cross-entropy loss
+    loss = nn.functional.cross_entropy(torch.transpose(x, 1, 2), y, ignore_index=ignore_index, reduction='sum') / x.shape[0]
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
-    
+
     return loss
 
 
@@ -426,12 +432,13 @@ class CaptioningRNN(nn.Module):
     of dimension W, and operates on minibatches of size N.
 
     Note that we don't use any regularization for the CaptioningRNN.
-    
+
     You will implement the `__init__` method for model initialization and
     the `forward` method first, then come back for the `sample` method later.
     """
+
     def __init__(self, word_to_idx, input_dim=512, wordvec_dim=128,
-                 hidden_dim=128, device='cpu', 
+                 hidden_dim=128, device='cpu',
                  ignore_index=None, dtype=torch.float32):
         """
         Construct a new CaptioningRNN instance.
@@ -454,8 +461,8 @@ class CaptioningRNN(nn.Module):
         self._null = word_to_idx['<NULL>']
         self._start = word_to_idx.get('<START>', None)
         self._end = word_to_idx.get('<END>', None)
-        self.ignore_index = ignore_index  
-        
+        self.ignore_index = ignore_index
+
         ##########################################################################
         # TODO: Initialize the image captioning module. Refer to the TODO        #
         # in the captioning_forward function on layers you need to create        #
@@ -471,11 +478,26 @@ class CaptioningRNN(nn.Module):
         #       feature and pooling=False to get the CNN activation map.         #
         ##########################################################################
         # Replace "pass" statement with your code
-        pass
+
+        # 特徵提取
+        self.featureExtractor = FeatureExtractor(pooling=True, device=device, dtype=dtype)
+
+        # feature projector
+        self.featureProjector = nn.Linear(1280, hidden_dim).to(device, dtype)
+
+        # word embedding
+        self.wordEmbedding = WordEmbedding(vocab_size, wordvec_dim, device=device, dtype=dtype)
+
+        # RNN
+        self.coreNetwork = RNN(wordvec_dim, hidden_dim, device=device, dtype=dtype)
+
+        # out projector
+        self.outProjector = nn.Linear(hidden_dim, vocab_size).to(device, dtype)
+
         #############################################################################
         #                              END OF YOUR CODE                             #
         #############################################################################
-    
+
     def forward(self, images, captions):
         """
         Compute training-time loss for the RNN. We input images and
@@ -519,7 +541,25 @@ class CaptioningRNN(nn.Module):
         # Do not worry about regularizing the weights or their gradients!          #
         ############################################################################
         # Replace "pass" statement with your code
-        pass
+
+        # 從圖片中抓特徵
+        features = self.featureExtractor.extract_mobilenet_feature(images)
+
+        # Step (1): 轉換
+        h0_A = self.featureProjector(features)
+
+        # Step (2): 產生word embedded
+        embed_words = self.wordEmbedding(captions_in)
+
+        # Step (3): 利用 RNN 產生 embed words 的序列並且產生 hidden state vectors
+        hstates = self.coreNetwork(embed_words, h0_A)
+
+        # Step (4): 用 temporal 轉換來計算單字的分數
+        scores = self.outProjector(hstates)
+
+        # Step (5): 用 temporal_softmax_loss 來計算 loss
+        loss = temporal_softmax_loss(scores, captions_out, self.ignore_index)
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -573,7 +613,44 @@ class CaptioningRNN(nn.Module):
         # NOTE: We are still working over minibatches in this function.           #
         ###########################################################################
         # Replace "pass" statement with your code
-        pass
+
+        # 從圖片中抓特徵
+        features = self.featureExtractor.extract_mobilenet_feature(images)
+
+        # 設定計算裝置
+        device = features.device
+        captions = captions.to(device=device)
+
+        # affine轉換
+        h = self.featureProjector(features)
+
+        # <START> token
+        fwords = self._start
+
+        notend = torch.full([N], True, device=device)
+
+        # 開始為 minibatch sample 產生 token
+        for ts in range(max_length):
+            x = self.wordEmbedding(fwords) # word embedded
+            h = self.coreNetwork.step_forward(x, h) # 透過 RNN 做 forward
+            hts = h.unsqueeze(1) # reshape
+            temp = self.outProjector(hts) # temporal affine forward
+            temp = temp.squeeze() # reshape
+
+            # 選分數最高的字
+            fwords = torch.argmax(temp, axis=1)
+
+            # 確認 <END> 在每個 sample 中 都有遇到，並且標記
+            mask = fwords == self._end
+            notend[mask] = False
+
+            # 確認已經遇到 <END>，如果已經遇到則停止產生 token
+            if not notend.any():
+                break
+            
+            # 如果 <END> 還沒被遇到，則將當前 timestamp 生成的單字加到 caption 中
+            captions[notend, ts] = fwords[notend]
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
