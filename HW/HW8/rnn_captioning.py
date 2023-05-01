@@ -103,11 +103,11 @@ def rnn_step_forward(x, prev_h, Wx, Wh, b):
     ##############################################################################
     # Replace "pass" statement with your code
     
-    # Compute the hidden state for this timestep
+    # 計算單次的 hidden state
     a = torch.mm(x, Wx) + torch.mm(prev_h, Wh) + b
     next_h = torch.tanh(a)
 
-    #存cache
+    # 將結果存到cache
     cache = (x, prev_h, Wx, Wh, a)
 
     ##############################################################################
@@ -142,17 +142,15 @@ def rnn_step_backward(dnext_h, cache):
     
     x, prev_h, Wx, Wh, a = cache
 
-    # Compute the gradients with respect to the input to the multiplication
-    da = dnext_h * torch.tanh(a).grad
+    # 計算 activation function tanh 的梯度
+    dtanh = dnext_h * (1 - torch.tanh(a) * torch.tanh(a))
 
-    # Compute the gradients with respect to the weights and biases
-    dWx = torch.mm(x.t(), da)
-    dWh = torch.mm(prev_h.t(), da)
-    db = torch.sum(da, dim=0, keepdim=True)
-
-    # Compute the gradients with respect to the input and previous hidden state
-    dx = torch.mm(da, Wx.t())
-    dprev_h = torch.mm(da, Wh.t())
+    # 計算各個參數的梯度
+    dx = torch.mm(dtanh, torch.t(Wx))
+    dprev_h = torch.mm(dtanh, torch.t(Wh))
+    dWx = torch.mm(torch.t(x), dtanh)
+    dWh = torch.mm(torch.t(prev_h), dtanh)
+    db = torch.sum(dtanh, dim=0)
 
     ##############################################################################
     #                               END OF YOUR CODE                             #
@@ -186,32 +184,30 @@ def rnn_forward(x, h0, Wx, Wh, b):
     ##############################################################################
     # Replace "pass" statement with your code
     
-    seq_len, batch_size, input_size = x.shape
-    hidden_size = Wh.shape[0]
+    N, T, D = x.shape
+    _, H = h0.shape
 
-    # Initialize hidden states and cache
-    h = torch.zeros(seq_len, batch_size, hidden_size)
+    # 初始化h
+    h = torch.zeros(N, T, H, dtype=x.dtype, device=x.device)
+
+    # 初始化 current hidden state (變成 initial state)
+    curr_h = h0
+
+    # 初始化 cache
     cache = []
 
-    # Set initial hidden state
-    h_prev = h0
+    for t in range(T):
+        # 提取現在time step 的 input
+        xt = x[:, t, :]
 
-    # Loop over the input sequence
-    for t in range(seq_len):
-        # Compute intermediate activation value
-        a_t = torch.mm(x[t], Wx) + torch.mm(h_prev, Wh) + b
+        # forward pass
+        curr_h, cache_t = rnn_step_forward(xt, curr_h, Wx, Wh, b)
 
-        # Compute next hidden state using the tanh activation function
-        h_t = torch.tanh(a_t)
+        # 儲存結果
+        h[:, t, :] = curr_h
 
-        # Store the current hidden state and intermediate values in cache
-        cache.append((h_prev, x[t], a_t, h_t))
-
-        # Update previous hidden state for the next time step
-        h_prev = h_t
-
-        # Store current hidden state in output sequence
-        h[t] = h_t
+        # 存 cache
+        cache.append(cache_t)
 
     ##############################################################################
     #                               END OF YOUR CODE                             #
@@ -246,40 +242,35 @@ def rnn_backward(dh, cache):
     ##############################################################################
     # Replace "pass" statement with your code
     
-    seq_len, batch_size, input_size = x.shape
-    hidden_size = Wh.shape[0]
+    N, T, H = dh.shape
+    x, h0, Wx, Wh, b = cache[0]
+    D = x.shape[1]
 
-    # Initialize gradients
-    dx = torch.zeros(seq_len, batch_size, input_size)
-    dh_prev = torch.zeros(batch_size, hidden_size)
-    dWx = torch.zeros(input_size, hidden_size)
-    dWh = torch.zeros(hidden_size, hidden_size)
-    db = torch.zeros(hidden_size)
+    # 初始化梯度
+    dx = torch.zeros(N, T, D, dtype=x.dtype, device=x.device)
+    dh0 = torch.zeros(N, H, dtype=x.dtype, device=x.device)
+    dWx = torch.zeros(D, H, dtype=x.dtype, device=x.device)
+    dWh = torch.zeros(H, H, dtype=x.dtype, device=x.device)
+    db = torch.zeros(H, dtype=x.dtype, device=x.device)
 
-    # Loop over the input sequence in reverse order
-    for t in reversed(range(seq_len)):
-        # Get cached values
-        h_prev, x_t, a_t, h_t = cache[t]
+    # 初始化梯度
+    dprev_h = torch.zeros(N, H, dtype=x.dtype, device=x.device)
 
-        # Compute the upstream gradients for the current time step
-        dh_current = dh[t] + dh_prev
+    for t in reversed(range(T)):
+        # 計算總梯度
+        dh_total = dh[:, t, :] + dprev_h
 
-        # Compute gradients with respect to the tanh activation function
-        da_t = dh_current * (1 - h_t.pow(2))
+        # backward pass
+        dx_t, dprev_h, dWx_t, dWh_t, db_t = rnn_step_backward(dh_total, cache[t])
 
-        # Compute gradients with respect to the bias vector
-        db += torch.sum(da_t, dim=0)
+        # 累加梯度
+        dx[:, t, :] += dx_t
+        dWx += dWx_t
+        dWh += dWh_t
+        db += db_t
 
-        # Compute gradients with respect to the input and hidden state weight matrices
-        dWx += torch.mm(x_t.t(), da_t)
-        dWh += torch.mm(h_prev.t(), da_t)
-
-        # Compute gradients with respect to the input sequence and previous hidden state
-        dx[t] = torch.mm(da_t, Wx.t())
-        dh_prev = torch.mm(da_t, Wh.t())
-
-    # Gradients with respect to initial hidden state
-    dh0 = dh_prev
+    # dprev_h 最後的值是一開始state的梯度
+    dh0 = dprev_h
 
     ##############################################################################
     #                               END OF YOUR CODE                             #
