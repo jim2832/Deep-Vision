@@ -272,7 +272,6 @@ def rnn_backward(dh, cache):
         dWh += dWh_t
         db += db_t
 
-    # dprev_h 最後的值是一開始state的梯度
     dh0 = dprev_h
 
     ##############################################################################
@@ -413,7 +412,9 @@ def temporal_softmax_loss(x, y, ignore_index=None):
     # Replace "pass" statement with your code
 
     # 計算 cross-entropy loss
-    loss = nn.functional.cross_entropy(torch.transpose(x, 1, 2), y, ignore_index=ignore_index, reduction='sum') / x.shape[0]
+    loss = nn.functional.cross_entropy(
+        torch.transpose(x, 1, 2), y, 
+        ignore_index=ignore_index, reduction='sum') / x.shape[0]
 
     ##############################################################################
     #                               END OF YOUR CODE                             #
